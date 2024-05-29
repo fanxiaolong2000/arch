@@ -329,16 +329,21 @@ class VolatilityProcess(metaclass=ABCMeta):
         ----------
         parameters : ndarray
             Parameters required to forecast the volatility model
+            一个包含模型参数的数组，用于波动率模型的计算。
         resids : ndarray
-            Residuals to use in the recursion
-        backcast : float
+            Residuals(残差) to use in the recursion
+            ：一个包含历史残差的数组，用于波动率模型的计算。
+            残差是观测值与其预测值之间的差异，通常用于评估模型的拟合程度。
+        backcast : float 
             Value to use when initializing the recursion
+            初始化递归计算的值，用于计算第一个波动率值。在计算波动率之前，需要提供一个初始值。
         var_bounds : ndarray
             Array containing columns of lower and upper bounds
+            ：一个包含波动率的下限和上限的数组，用于确保波动率保持在一定的范围内。
         horizon : int
             Forecast horizon.  Must be 1 or larger.  Forecasts are produced
             for horizons in [1, horizon].
-
+        start_index: 开始预测的位置索引
         Returns
         -------
         sigma2 : ndarray
@@ -348,16 +353,25 @@ class VolatilityProcess(metaclass=ABCMeta):
             location
         """
         t = resids.shape[0]
+        # 将输入参数 resids 和 var_bounds 进行扩展，
+        # 以便包含一个额外的元素，分别是残差序列的最后一个值和波动率的上下限。
         _resids: Float64Array = np.concatenate((resids, np.array([0.0])))
         _var_bounds: Float64Array = np.concatenate(
             (var_bounds, np.array([[0, np.inf]]))
         )
+        # 初始化一个长度为 t + 1 的数组 sigma2，用于存储每个时间步的波动率值。这里的 t 是残差序列的长度。
         sigma2 = np.zeros(t + 1)
+        # 调用 compute_variance 方法计算波动率的序列。
+        # 这个方法会根据给定的模型参数、残差序列、初始值和范围来计算波动率序列。
         self.compute_variance(parameters, _resids, sigma2, backcast, _var_bounds)
+        # 创建一个形状为 (t - start_index, horizon) 的零数组 forecasts，
+        # 用于存储预测结果。这里的 t - start_index 表示从 start_index 开始的未来时间步数。
         forecasts = np.zeros((t - start_index, horizon))
+        # 将波动率序列截取到 start_index 之后的部分，作为预测的结果。
+        # 这些预测值存储在 forecasts 的第一列中，因为我们只进行一步预测，所以只需要考虑第一列。
         forecasts[:, 0] = sigma2[start_index + 1 :]
         sigma2 = sigma2[:-1]
-
+        # 最后，该方法返回两个值：sigma2 和 forecasts，分别表示每个时间步的波动率和未来时间步的波动率预测值。
         return sigma2, forecasts
 
     @abstractmethod
@@ -568,7 +582,7 @@ class VolatilityProcess(metaclass=ABCMeta):
 
         Parameters
         ----------
-        resids : ndarray
+        resids : ndarray`
             Vector of (approximate) residuals
 
         Returns
@@ -576,7 +590,17 @@ class VolatilityProcess(metaclass=ABCMeta):
         backcast : float
             Value to use in backcasting in the volatility recursion
         """
+        # 计算权重系数：首先，方法会计算一个权重系数 w，用于对历史残差进行加权求和。
+        # 这里采用了指数加权移动平均的方法来计算权重系数。
+        # 指数加权移动平均的特点是近期的数据具有更大的权重，
+        # 这样能够更好地反映近期的残差情况。
+        # 权重系数的长度 tau 一般取较小的值，
+        # 通常是不超过历史残差序列长度的固定值，
+        # 例如这里取的是 min(75, resids.shape[0])。
         tau = min(75, resids.shape[0])
+        # 计算初始值：利用计算得到的权重系数 w，对历史残差序列的头部进行加权求和，
+        # 得到一个初始值。这个初始值会作为后向递归的初始值，用于计算第一个波动率值。
+        # 这里的计算是残差的平方乘以相应的权重系数，然后对加权后的残差进行求和。
         w = 0.94 ** np.arange(tau)
         w = w / sum(w)
 
@@ -1103,7 +1127,33 @@ class GARCH(VolatilityProcess, metaclass=AbstractDocStringInheritor):
         backcast: float | Float64Array,
         var_bounds: Float64Array,
     ) -> Float64Array:
-        # fresids is abs(resids) ** power
+        """
+        parameters 一个包含了模型参数的数组，这些参数用来计算波动率。
+
+        resids 一个包含了历史残差的数组，用于计算波动率。残差是观测值与其预测值之间的差异。
+
+        sigma2 一个数组，用于存储计算得到的波动率值。它的长度应该与 resids 相同。
+
+        backcast 初始化递归计算的值，用于计算第一个波动率值。在计算波动率之前，需要提供一个初始值。
+
+        var_bounds 一个包含了波动率的下限和上限的数组，用于确保波动率保持在一定的范围内。
+
+        函数中的主要步骤包括：
+
+        计算 fresids 将残差的绝对值进行幂运算，幂次为 power。这个步骤是为了后续计算做准备，因为 ARCH 模型中的条件方差通常是残差的某个函数。
+
+        计算 sresids 得到残差的符号信息，即如果残差为负，则为-1，
+        否则为1。这个步骤也是为了后续计算做准备，因为 ARCH 模型可能会考虑残差的符号。
+
+        提取模型中需要用到的参数 p, o, q 表示 ARCH 模型中的阶数，即滞后项的数量。
+
+        调用 rec.garch_recursion 方法：这个方法执行了 GARCH 模型的递归计算，根据给定的模型参数、残差的绝对值、残差的符号、初始值、阶数等，计算出每个时间点的波动率值。这个方法的具体实现可能在模型库的内部，没有在这段代码中给出。
+
+        
+
+        返回调整后的波动率值
+        """
+        # fresids is abs(resids) ** power (值为2)
         # sresids is I(resids<0)
         power = self.power
         fresids = np.abs(resids) ** power
@@ -1111,11 +1161,13 @@ class GARCH(VolatilityProcess, metaclass=AbstractDocStringInheritor):
 
         p, o, q = self.p, self.o, self.q
         nobs = resids.shape[0]
-
+        # 递归计算
         rec.garch_recursion(
             parameters, fresids, sresids, sigma2, p, o, q, nobs, backcast, var_bounds
         )
         inv_power = 2.0 / power
+        # 将波动率值调整为正确的尺度：将波动率的计算结果乘以一个系数，以调整为正确的尺度。
+        # 这个系数是 2.0 / power 的倒数，其中 power 是模型中的一个参数。
         sigma2 **= inv_power
 
         return sigma2
@@ -1356,26 +1408,41 @@ class GARCH(VolatilityProcess, metaclass=AbstractDocStringInheritor):
         simulations: int,
         rng: RNGType,
     ) -> VarianceForecast:
+        """
+        实现GARCH 预测
+        """
+        # 方法进行一步预测，得到条件方差的序列 sigma2 和预测的波动率序列 forecasts
         sigma2, forecasts = self._one_step_forecast(
             parameters, resids, backcast, var_bounds, horizon, start
         )
+        # 获取残差序列的长度
         t = resids.shape[0]
+        # 初始化各种数组用于存储模拟结果：
+
+        # paths 存储模拟路径（每个路径包含一个时间段内的波动率值）。
+        # shocks 存储模拟残差（每个残差对应一个时间段内的模拟值）。
         paths = np.empty((t - start, simulations, horizon))
         shocks = np.empty((t - start, simulations, horizon))
         power = self.power
         m = np.max([self.p, self.o, self.q])
+        # scaled_forecast_paths、scaled_shock、asym_scaled_shock 
+        # 分别存储缩放后的预测路径、残差的绝对值、偏度调整的残差的绝对值。
         scaled_forecast_paths = np.zeros((simulations, m + horizon))
         scaled_shock = np.zeros((simulations, m + horizon))
         asym_scaled_shock = np.zeros((simulations, m + horizon))
 
         for i in range(start, t):
+            # 在每个时间步，生成一个随机数矩阵 std_shocks，用于模拟标准化残差。
             std_shocks = rng((simulations, horizon))
             if i - m < 0:
+                # 根据模型参数和历史数据，计算缩放后的预测路径 scaled_forecast_paths
+                # 和缩放后的残差 scaled_shock
                 scaled_forecast_paths[:, :m] = backcast ** (power / 2.0)
                 scaled_shock[:, :m] = backcast ** (power / 2.0)
                 asym_scaled_shock[:, :m] = (0.5 * backcast) ** (power / 2.0)
 
                 # Use actual values where available
+                # 如果历史数据不足以覆盖所有需要的时间段，用实际值替代预测值
                 count = i + 1
                 scaled_forecast_paths[:, m - count : m] = sigma2[:count] ** (
                     power / 2.0
@@ -1384,6 +1451,7 @@ class GARCH(VolatilityProcess, metaclass=AbstractDocStringInheritor):
                 asym = np.abs(resids[:count]) ** power * (resids[:count] < 0)
                 asym_scaled_shock[:, m - count : m] = asym
             else:
+                # 对于时间段足够长的情况，直接使用历史数据计算缩放后的预测路径和残差。
                 scaled_forecast_paths[:, :m] = sigma2[i - m + 1 : i + 1] ** (
                     power / 2.0
                 )
@@ -1402,8 +1470,10 @@ class GARCH(VolatilityProcess, metaclass=AbstractDocStringInheritor):
                 asym_scaled_shock,
             )
             loc = i - start
+            # 调用 _simulate_paths 方法进行路径模拟，
+            # 得到预测的波动率 f、模拟路径 p 和模拟残差 s，将结果存储到 forecasts、paths 和 shocks 中。
             forecasts[loc, :], paths[loc], shocks[loc] = f, p, s
-
+        # 返回 VarianceForecast 对象，其中包含模拟得到的波动率预测、路径和残差。
         return VarianceForecast(forecasts, paths, shocks)
 
 
