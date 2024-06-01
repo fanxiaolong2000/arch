@@ -371,7 +371,8 @@ class VolatilityProcess(metaclass=ABCMeta):
         # 这些预测值存储在 forecasts 的第一列中，因为我们只进行一步预测，所以只需要考虑第一列。
         forecasts[:, 0] = sigma2[start_index + 1 :]
         sigma2 = sigma2[:-1]
-        # 最后，该方法返回两个值：sigma2 和 forecasts，分别表示每个时间步的波动率和未来时间步的波动率预测值。
+        # 最后，该方法返回两个值：sigma2 和 forecasts，
+        # 分别表示每个时间步的波动率和未来时间步的波动率预测值。
         return sigma2, forecasts
 
     @abstractmethod

@@ -148,12 +148,13 @@ def _ar_to_impulse(steps: int, params: Float64Array) -> Float64Array:
 
     return impulse
 
-
+# tag model中间类HARX
 class HARX(ARCHModel, metaclass=AbstractDocStringInheritor):
     r"""
     Heterogeneous Autoregression (HAR), with optional exogenous regressors,
     model estimation and simulation
-
+    异质自回归(HAR)，具有可选的外源性回归因子，
+    模型估计与仿真
     Parameters
     ----------
     y : {ndarray, Series}
@@ -438,7 +439,7 @@ class HARX(ARCHModel, metaclass=AbstractDocStringInheritor):
     ) -> pd.DataFrame:
         """
         Simulates data from a linear regression, AR or HAR models
-
+        模拟线性回归,AR或HAR模型的数据
         Parameters
         ----------
         params : array_like
@@ -453,6 +454,8 @@ class HARX(ARCHModel, metaclass=AbstractDocStringInheritor):
         burn : int, optional
             Number of values to simulate to initialize the model and remove
             dependence on initial values.
+            为了初始化模型和消除对初始值的依赖而模拟的值的数目
+
         initial_value : {ndarray, float}, optional
             Either a scalar value or `max(lags)` array set of initial values to
             use when initializing the model.  If omitted, 0.0 is used.
@@ -659,7 +662,7 @@ class HARX(ARCHModel, metaclass=AbstractDocStringInheritor):
             reg_x = self._x
         else:
             reg_x = np.empty((nobs_orig, 0), dtype=np.float64)
-
+        # tag regressors 赋初值
         self.regressors = np.hstack((reg_constant, reg_lags, reg_x))
 
     def _r2(self, params: ArrayLike1D) -> float:
@@ -696,11 +699,11 @@ class HARX(ARCHModel, metaclass=AbstractDocStringInheritor):
         reg = self.regressors
         self._fit_regressors = reg[_first_obs_index:_last_obs_index]
         self.volatility.start, self.volatility.stop = self._fit_indices
-
+    # 传入params在此实现
     def _fit_no_arch_normal_errors_params(self) -> Float64Array:
         """
         Estimates model parameters excluding sigma2
-
+        最小二乘法估计模型的参数,在mean的实现为求其均值,因为没有x
         Returns
         -------
         params : ndarray
@@ -1067,7 +1070,7 @@ class HARX(ARCHModel, metaclass=AbstractDocStringInheritor):
             reindex=reindex,
         )
 
-
+# tag model 的常数均值实现
 class ConstantMean(HARX):
     r"""
     Constant mean model estimation and simulation.
@@ -1202,13 +1205,18 @@ class ConstantMean(HARX):
         df = dict(data=y[burn:], volatility=vol[burn:], errors=errors[burn:])
 
         return pd.DataFrame(df)
-
+# 计算残差 
+# tag resids 声明处
+# ε_t = y_t - μ
     def resids(
         self,
         params: Float64Array,
         y: ArrayLike1D | None = None,
         regressors: ArrayLike2D | None = None,
     ) -> ArrayLike1D:
+        """
+        y 为 输入的观测值(对数收益率)
+        """
         y = self._fit_y if y is None else np.asarray(y, dtype=np.float64)
         return y - params
 
@@ -1893,6 +1901,7 @@ def arch_model(
             * Generalized Error Distribution: 'ged', 'generalized error"
 
     hold_back : int
+        #  在样本开始时排除观测数 估计模型参数。用于比较不同的模型在普通样本上估计的滞后长度。
         Number of observations at the start of the sample to exclude when
         estimating model parameters.  Used when comparing models with different
         lag lengths to estimate on the common sample.
@@ -1959,7 +1968,9 @@ def arch_model(
         "generalized error",
     )
     mean_model = mean.lower()
+    # 默认GARCH
     vol_model = vol.lower()
+    # 默认normal
     dist_name = dist.lower()
     if mean_model not in known_mean:
         raise ValueError("Unknown model type in mean")
@@ -1967,20 +1978,38 @@ def arch_model(
         raise ValueError("Unknown model type in vol")
     if dist_name not in known_dist:
         raise ValueError("Unknown model type in dist")
-
+    # 选择均值回归模型
     if mean_model == "harx":
+        # HARX模型结合了异质自回归（HAR）模型和外生回归变量（X）。
+        # 适用于建模复杂的时间序列，考虑不同时间尺度上的滞后影响，并包括外生变量。
         am = HARX(y, x, lags, hold_back=hold_back, rescale=rescale)
     elif mean_model == "har":
+        # HAR模型是异质自回归模型，不包含外生回归变量。
+        # 仅考虑时间序列自身的滞后项影响，适用于捕捉不同时间尺度的自相关结构。
         am = HARX(y, None, lags, hold_back=hold_back, rescale=rescale)
     elif mean_model == "arx":
+        # ARX模型结合了自回归（AR）模型和外生回归变量（X）。
+        # 于建模包含外生变量影响的时间序列，适合具有明显外部驱动因素的序列。
         am = ARX(y, x, lags, hold_back=hold_back, rescale=rescale)
     elif mean_model == "ar":
+        # AR模型是纯自回归模型，不包含外生回归变量。
+        # 仅考虑时间序列自身的滞后项，适用于捕捉时间序列的自相关结构。
         am = ARX(y, None, lags, hold_back=hold_back, rescale=rescale)
     elif mean_model == "ls":
+        #LS 模型使用最小二乘法进行回归分析。
+        # y是被建模的时间序列。
+        # x是回归变量。
+        # 适用于简单线性回归分析，提供一种基本的拟合方法。
         am = LS(y, x, hold_back=hold_back, rescale=rescale)
     elif mean_model == "constant":
+        # Constant Mean模型假设时间序列的均值是一个常数。
+        # y是被建模的时间序列。
+        # 适用于数据的均值恒定不变的情况，提供最简单的均值建模方法。
         am = ConstantMean(y, hold_back=hold_back, rescale=rescale)
     else:  # mean == "zero"
+        # Zero Mean模型假设时间序列的均值为零。
+        # y是被建模的时间序列。
+        # 适用于零均值数据，通常是去均值后的残差序列。
         am = ZeroMean(y, hold_back=hold_back, rescale=rescale)
 
     if vol in ("arch", "garch", "figarch", "egarch", "aparch") and not isinstance(
@@ -1989,7 +2018,7 @@ def arch_model(
         raise TypeError(
             "p must be a scalar int for all volatility processes except HARCH."
         )
-
+    # 选择波动率模型
     if vol_model == "constant":
         v: VolatilityProcess = ConstantVariance()
     elif vol_model == "arch":
@@ -1999,6 +2028,7 @@ def arch_model(
         assert isinstance(p, int)
         v = FIGARCH(p=p, q=q, power=power)
     elif vol_model == "garch":
+        # 默认
         assert isinstance(p, int)
         v = GARCH(p=p, o=o, q=q, power=power)
     elif vol_model == "egarch":
@@ -2009,7 +2039,7 @@ def arch_model(
         v = APARCH(p=p, o=o, q=q)
     else:  # vol == 'harch'
         v = HARCH(lags=p)
-
+    # 选择分布模型 影响构造似然函数
     if dist_name in ("skewstudent", "skewt"):
         d: Distribution = SkewStudent()
     elif dist_name in ("studentst", "t"):
@@ -2017,9 +2047,10 @@ def arch_model(
     elif dist_name in ("ged", "generalized error"):
         d = GeneralizedError()
     else:  # ('gaussian', 'normal')
+        # 默认正态分布
         d = Normal()
 
-    am.volatility = v
-    am.distribution = d
+    am.volatility = v # 默认GARCH
+    am.distribution = d # 默认高斯分布(正态分布)
 
     return am

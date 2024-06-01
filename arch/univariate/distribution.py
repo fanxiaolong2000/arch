@@ -409,7 +409,7 @@ class Normal(Distribution, metaclass=AbstractDocStringInheritor):
 
     def bounds(self, resids: Float64Array) -> list[tuple[float, float]]:
         return []
-
+    # 似然函数
     def loglikelihood(
         self,
         parameters: Sequence[float] | ArrayLike1D,

@@ -168,12 +168,12 @@ def implicit_constant(x: Float64Array) -> bool:
     rank = np.linalg.matrix_rank(np.hstack((np.ones((nobs, 1)), x)))
     return rank == x.shape[1]
 
-
+# tag model的最顶层抽象
 class ARCHModel(metaclass=ABCMeta):
     """
     Abstract base class for mean models in ARCH processes.  Specifies the
     conditional mean process.
-
+    
     All public methods that raise NotImplementedError should be overridden by
     any subclass.  Private methods that raise NotImplementedError are optional
     to override but recommended where applicable.
@@ -577,7 +577,7 @@ class ARCHModel(metaclass=ABCMeta):
     ) -> ARCHModelResult:
         r"""
         Estimate model parameters
-
+        # 估计模型参数
         Parameters
         ----------
         update_freq : int, optional
@@ -609,7 +609,7 @@ class ARCHModel(metaclass=ABCMeta):
             Value to use as backcast. Should be measure :math:`\sigma^2_0`
             since model-specific non-linear transformations are applied to
             value before computing the variance recursions.
-
+            # 
         Returns
         -------
         results : ARCHModelResult
@@ -635,9 +635,10 @@ class ARCHModel(metaclass=ABCMeta):
         has_closed_form = (
             v.closed_form and d.num_params == 0 and isinstance(v, ConstantVariance)
         )
-
+        # 此方法会影响对残差的y赋值
         self._adjust_sample(first_obs, last_obs)
-
+        # 对残差赋值
+        # tag resids 调用处,传入starting_values作为params其值为y的均值
         resids = np.asarray(self.resids(self.starting_values()), dtype=float)
         self._check_scale(resids)
         if self.scale != 1.0:

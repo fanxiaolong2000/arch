@@ -258,7 +258,7 @@ def date_to_index(
 def cutoff_to_index(cutoff: None | int | DateLike, index: Index, default: int) -> int:
     """
     Converts a cutoff to a numerical index
-
+    将截至值转为数字索引
     Parameters
     ----------
     cutoff : {None, str, datetime, datetime64, Timestamp)
